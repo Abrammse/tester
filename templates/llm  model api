@@ -1,0 +1,43 @@
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+
+MODEL_NAME = "vilsonrodrigues/falcon-7b-instruct-sharded"
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+
+@api_view(['POST'])
+@csrf_exempt
+def generate_text(request):
+    if request.method == 'POST':
+        data = request.data
+        user_story = data.get('user_story', '')
+        test_cases = data.get('test_cases', '')
+
+        prompt = f"""
+        <human>: {user_story}
+        <assistant>: {test_cases}
+        """.strip()
+
+        encoding = tokenizer(prompt, return_tensors="pt")
+        with torch.inference_mode():
+            outputs = model.generate(
+                input_ids=encoding.input_ids,
+                attention_mask=encoding.attention_mask,
+                max_length=200,
+                temperature=0.7,
+                top_p=0.7,
+                num_return_sequences=1,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id
+            )
+
+        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return Response({'generated_text': generated_text})
+    else:
+        return Response({'error': 'Invalid request method'})
+// in the urls
+    path('generate_text/', views.generate_text, name='generate_text'),
